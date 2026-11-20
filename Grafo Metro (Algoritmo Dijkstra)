@@ -1,0 +1,386 @@
+"""
+Modelo de la red del Metro de la Ciudad de México (STC Metro) como grafo, usando NetworkX, con pesos (distancia y tiempo estimado) en las aristas.
+- Cada estación es un nodo.
+- Cada par de estaciones consecutivas de una misma línea es una arista.
+- Las estaciones de transbordo son, simplemente, nodos que pertenecen a más de una línea (sin necesidad de "duplicar" el nodo).
+- Cada arista tiene dos pesos:
+    1- 'distancia_km': distancia PROMEDIO entre estaciones de esa línea.
+    2- 'tiempo_min': tiempo estimado en minutos, resultado de dividir
+
+Nayib Alexis Toriz Alva
+"""
+from __future__ import annotations
+
+import heapq
+import networkx as nx
+import matplotlib.pyplot as plt
+
+---------------------------------------------------------------------
+1. Datos de las líneas: nombre -> {color, longitud_km, estaciones}
+   longitud_km = longitud EN SERVICIO reportada por metro.cdmx.gob.mx
+---------------------------------------------------------------------
+VELOCIDAD_COMERCIAL_KMH = 35.0
+PENALIZACION_TRANSBORDO_MIN = 3.0
+"""
+
+LINEAS = 
+{
+    "Línea 1": 
+    {
+        "color": "#F74B9A",
+        "longitud_km": 18.828,
+        "estaciones": 
+        [
+            "Pantitlán", "Zaragoza", "Gómez Farías", "Boulevard Puerto Aéreo", "Balbuena", "Moctezuma", "San Lázaro", "Candelaria", "Merced", 
+            "Pino Suárez", "Isabel la Católica", "Salto del Agua", "Balderas", "Cuauhtémoc", "Insurgentes", "Sevilla", "Chapultepec", 
+            "Juanacatlán", "Tacubaya", "Observatorio",
+        ],
+    },
+
+    "Línea 2": 
+    {
+        "color": "#0073CF",
+        "longitud_km": 20.713,
+        "estaciones": 
+        [
+            "Cuatro Caminos", "Panteones", "Tacuba", "Cuitláhuac", "Popotla", "Colegio Militar", "Normal", "San Cosme", "Revolución", "Hidalgo",
+            "Bellas Artes", "Allende", "Zócalo/Tenochtitlan", "Pino Suárez", "San Antonio Abad", "Chabacano", "Viaducto", "Xola", "Villa de Cortés", 
+            "Nativitas", "Portales", "Ermita", "General Anaya", "Tasqueña",
+        ],
+    },
+
+    "Línea 3": 
+    {
+        "color": "#6B8E23",
+        "longitud_km": 23.600,
+        "estaciones": 
+        [
+            "Indios Verdes", "Deportivo 18 de Marzo", "Potrero", "La Raza", "Tlatelolco", "Guerrero", "Hidalgo", "Juárez", "Balderas",
+            "Niños Héroes/Poder Judicial CDMX", "Hospital General", "Centro Médico", "Etiopía/Plaza de la Transparencia", "Eugenia",
+            "División del Norte", "Zapata", "Coyoacán", "Viveros/Derechos Humanos", "Miguel Ángel de Quevedo", "Copilco", "Universidad",
+        ],
+    },
+
+    "Línea 4": 
+    {
+        "color": "#92368C",
+        "longitud_km": 9.363,
+        "estaciones": 
+        [
+            "Martín Carrera", "Talismán", "Bondojito", "Consulado", "Canal del Norte", "Morelos", "Candelaria", "Fray Servando",
+            "Jamaica", "Santa Anita",
+        ],
+    },
+
+    "Línea 5": 
+    {
+        "color": "#FFCE00",
+        "longitud_km": 14.435,
+        "estaciones": 
+        [
+            "Pantitlán", "Hangares", "Terminal Aérea", "Oceanía", "Aragón", "Eduardo Molina", "Consulado", "Valle Gómez", "Misterios",
+            "La Raza", "Autobuses del Norte", "Instituto del Petróleo",
+            "Politécnico",
+        ],
+    },
+
+    "Línea 6": 
+    {
+        "color": "#B22222",
+        "longitud_km": 11.434,
+        "estaciones": 
+        [
+            "El Rosario", "Tezozómoc", "UAM-Azcapotzalco", "Ferrería/Arena Ciudad de México", "Norte 45", "Vallejo", "Instituto del Petróleo",
+            "Lindavista", "Deportivo 18 de Marzo", "La Villa-Basílica", "Martín Carrera",
+        ],
+    },
+
+    "Línea 7": 
+    {
+        "color": "#F7941D",
+        "longitud_km": 17.011,
+        "estaciones": 
+        [
+            "El Rosario", "Aquiles Serdán", "Camarones", "Refinería", "Tacuba", "San Joaquín", "Polanco", "Auditorio", "Constituyentes",
+            "Tacubaya", "San Pedro de los Pinos", "San Antonio", "Mixcoac", "Barranca del Muerto",
+        ],
+    },
+
+    "Línea 8": 
+    {
+        "color": "#00843D",
+        "longitud_km": 20.078,
+        "estaciones": 
+        [
+            "Garibaldi/Lagunilla", "Bellas Artes", "San Juan de Letrán", "Salto del Agua", "Doctores", "Obrera", "Chabacano", "La Viga",
+            "Santa Anita", "Coyuya", "Iztacalco", "Apatlaco", "Aculco", "Escuadrón 201", "Atlalilco", "Iztapalapa", "Cerro de la Estrella",
+            "UAM-I", "Constitución de 1917",
+        ],
+    },
+
+    "Línea 9": 
+    {
+        "color": "#6F4E37",
+        "longitud_km": 13.033,
+        "estaciones": 
+        [
+            "Tacubaya", "Patriotismo", "Chilpancingo", "Centro Médico", "Lázaro Cárdenas", "Chabacano", "Jamaica", "Mixiuhca", "Velódromo", 
+            "Ciudad Deportiva", "Puebla", "Pantitlán",
+        ],
+    },
+
+    "Línea A": 
+    {
+        "color": "#918BC3",
+        "longitud_km": 14.893,
+        "estaciones": 
+        [
+            "Pantitlán", "Agrícola Oriental", "Canal de San Juan", "Tepalcates", "Guelatao", "Peñón Viejo", "Acatitla", "Santa Marta", 
+            "Los Reyes", "La Paz",
+        ],
+    },
+
+    "Línea B": 
+    {
+        "color": "#00A99D",
+        "longitud_km": 20.278,
+        "estaciones": 
+        [
+            "Ciudad Azteca", "Plaza Aragón", "Olímpica", "Ecatepec", "Múzquiz", "Río de los Remedios", "Impulsora", "Nezahualcóyotl",
+            "Villa de Aragón", "Bosque de Aragón", "Deportivo Oceanía", "Oceanía", "Romero Rubio", "Ricardo Flores Magón", "San Lázaro",
+            "Morelos", "Tepito", "Lagunilla", "Garibaldi/Lagunilla", "Guerrero", "Buenavista",
+        ],
+    },
+
+    "Línea 12": 
+    {
+        "color": "#C9A227",
+        "longitud_km": 24.500,  # aproximada -- fuentes oficiales inconsistentes
+        "estaciones": 
+        [
+            "Mixcoac", "Insurgentes Sur", "Hospital 20 de Noviembre", "Zapata", "Parque de los Venados", "Eje Central", "Ermita", "Mexicaltzingo",
+            "Atlalilco", "Culhuacán", "San Andrés Tomatlán", "Lomas Estrella", "Calle 11", "Periférico Oriente", "Tezonco", "Olivos", "Nopalera",
+            "Zapotitlán", "Tlaltenco", "Tláhuac",
+        ],
+    },
+}
+
+
+def construir_grafo_metro() -> nx.Graph:
+    """
+    Nodo -> atributo 'lineas' (conjunto de líneas que pasan por ahí). Arista -> 'lineas', 'color', 'distancia_km', 'tiempo_min' y 'weight'
+    (weight = tiempo_min, para que funcione directo con los algoritmos de NetworkX que buscan el atributo 'weight' por default).
+    """
+    G = nx.Graph()
+
+    for nombre_linea, datos in LINEAS.items():
+        estaciones = datos["estaciones"]
+        color = datos["color"]
+        n_tramos = len(estaciones) - 1
+        distancia_prom_km = datos["longitud_km"] / n_tramos
+        tiempo_prom_min = distancia_prom_km / VELOCIDAD_COMERCIAL_KMH * 60
+
+        for estacion in estaciones:
+            if G.has_node(estacion):
+                G.nodes[estacion]["lineas"].add(nombre_linea)
+            else:
+                G.add_node(estacion, lineas={nombre_linea})
+
+        for origen, destino in zip(estaciones, estaciones[1:]):
+            if G.has_edge(origen, destino):
+                # Tramo ya existente en otra línea: se promedian los pesos y se registra que por ahí pasa también esta línea.
+                arista = G.edges[origen, destino]
+                arista["lineas"].add(nombre_linea)
+                arista["distancia_km"] = round(
+                    (arista["distancia_km"] + distancia_prom_km) / 2, 3
+                )
+                arista["tiempo_min"] = round(
+                    (arista["tiempo_min"] + tiempo_prom_min) / 2, 2
+                )
+                arista["weight"] = arista["tiempo_min"]
+            else:
+                G.add_edge(
+                    origen, destino,
+                    lineas={nombre_linea},
+                    color=color,
+                    distancia_km=round(distancia_prom_km, 3),
+                    tiempo_min=round(tiempo_prom_min, 2),
+                    weight=round(tiempo_prom_min, 2),
+                )
+
+    return G
+
+
+def estaciones_de_transbordo(G: nx.Graph) -> dict:
+    # Regresa {estacion: {lineas}} para las estaciones con más de una línea.
+    return {n: d["lineas"] for n, d in G.nodes(data=True) if len(d["lineas"]) > 1}
+
+
+def _imprimir_ruta(G: nx.Graph, camino: list[str]) -> None:
+    for i, estacion in enumerate(camino, start=1):
+        lineas = ", ".join(sorted(G.nodes[estacion]["lineas"]))
+        marca = " <-- transbordo" if len(G.nodes[estacion]["lineas"]) > 1 else ""
+        print(f"  {i}. {estacion}  ({lineas}){marca}")
+
+
+def ruta_mas_corta(G: nx.Graph, origen: str, destino: str) -> list[str]:
+    # Ruta con menor número de estaciones entre origen y destino (sin pesos).
+    camino = nx.shortest_path(G, origen, destino)
+    print(f"\nRuta más corta (por número de estaciones) de '{origen}' a '{destino}':")
+    print(f"  {len(camino) - 1} tramos")
+    _imprimir_ruta(G, camino)
+    return camino
+
+
+def ruta_mas_rapida(G: nx.Graph, origen: str, destino: str, peso: str = "tiempo_min"):
+    # Ruta que minimiza el peso indicado (Dijkstra). Por defecto, tiempo_min.
+    camino = nx.dijkstra_path(G, origen, destino, weight=peso)
+    total = nx.dijkstra_path_length(G, origen, destino, weight=peso)
+    unidad = "min" if peso == "tiempo_min" else "km"
+    print(f"\nRuta más rápida (por '{peso}') de '{origen}' a '{destino}': "
+          f"{total:.1f} {unidad} (sin contar transbordos)")
+    _imprimir_ruta(G, camino)
+    return camino, total
+
+
+def tiempo_de_viaje(
+    G: nx.Graph, camino: list[str], penalizacion_transbordo: float = PENALIZACION_TRANSBORDO_MIN
+) -> float:
+    """Suma 'tiempo_min' a lo largo de un camino ya calculado y agrega una penalización fija cada vez que, entre un tramo y el siguiente, no hay
+    ninguna línea en común (es decir, hubo que hacer transbordo)."""
+    total = 0.0
+    lineas_tramo_anterior = None
+    for origen, destino in zip(camino, camino[1:]):
+        arista = G.edges[origen, destino]
+        total += arista["tiempo_min"]
+        lineas_tramo = arista["lineas"]
+        if lineas_tramo_anterior is not None and lineas_tramo_anterior.isdisjoint(lineas_tramo):
+            total += penalizacion_transbordo
+        lineas_tramo_anterior = lineas_tramo
+    return round(total, 1)
+
+
+def dijkstra_manual(G: nx.Graph, origen: str, peso: str = "tiempo_min"):
+    """
+    Implementación propia del algoritmo de Dijkstra (sin usar las funciones de ruteo de NetworkX, solo G.neighbors y G.edges para leer
+    el grafo) con una cola de prioridad (heapq).
+
+    Regresa (distancias, predecesores):
+      - distancias[estacion]   = peso acumulado mínimo desde 'origen'
+      - predecesores[estacion] = estación anterior en ese camino óptimo
+    """
+    distancias = {nodo: float("inf") for nodo in G.nodes}
+    predecesores = {nodo: None for nodo in G.nodes}
+    distancias[origen] = 0.0
+
+    visitados = set()
+    cola = [(0.0, origen)]  # (distancia_acumulada, estación)
+
+    while cola:
+        dist_actual, actual = heapq.heappop(cola)
+
+        if actual in visitados:
+            continue  # ya se procesó con una distancia menor o igual
+        visitados.add(actual)
+
+        for vecino in G.neighbors(actual):
+            peso_arista = G.edges[actual, vecino][peso]
+            nueva_dist = dist_actual + peso_arista
+
+            if nueva_dist < distancias[vecino]:
+                distancias[vecino] = nueva_dist
+                predecesores[vecino] = actual
+                heapq.heappush(cola, (nueva_dist, vecino))
+
+    return distancias, predecesores
+
+
+def reconstruir_camino(predecesores: dict, origen: str, destino: str) -> list[str]:
+    # Reconstruye la ruta origen -> destino a partir de los predecesores que calculó dijkstra_manual().
+    camino = [destino]
+    while camino[-1] != origen:
+        anterior = predecesores[camino[-1]]
+        if anterior is None:
+            raise ValueError(f"No existe camino entre '{origen}' y '{destino}'")
+        camino.append(anterior)
+    camino.reverse()
+    return camino
+
+
+def dibujar_grafo(G: nx.Graph, archivo: str = "metro_cdmx_grafo.png") -> None:
+    """Dibuja el grafo completo, coloreando cada arista según su línea."""
+    plt.figure(figsize=(24, 18))
+    pos = nx.kamada_kawai_layout(G)
+
+    for u, v, datos in G.edges(data=True):
+        nx.draw_networkx_edges(
+            G, pos, edgelist=[(u, v)], edge_color=datos["color"], width=2.2
+        )
+
+    transbordos = estaciones_de_transbordo(G)
+    tamanos = [260 if n in transbordos else 50 for n in G.nodes()]
+    colores_nodo = ["white" if n in transbordos else "black" for n in G.nodes()]
+
+    nx.draw_networkx_nodes(
+        G, pos, node_size=tamanos, node_color=colores_nodo,
+        edgecolors="black", linewidths=0.8,
+    )
+    nx.draw_networkx_labels(
+        G, pos, labels={n: n for n in transbordos}, font_size=6
+    )
+
+    plt.title("Red del Metro de la Ciudad de México (grafo NetworkX, con pesos)", fontsize=18)
+    plt.axis("off")
+    plt.tight_layout()
+    plt.savefig(archivo, dpi=200)
+    print(f"\nImagen guardada en: {archivo}")
+
+
+if __name__ == "__main__":
+    G = construir_grafo_metro()
+
+    print(f"Estaciones totales (nodos): {G.number_of_nodes()}")
+    print(f"Conexiones entre estaciones (aristas): {G.number_of_edges()}")
+
+    transbordos = estaciones_de_transbordo(G)
+    print(f"Estaciones de transbordo: {len(transbordos)}")
+
+    # Ejemplo de una arista con sus pesos
+    ej_origen, ej_destino = "Pantitlán", "Zaragoza"
+    print(f"\nEjemplo de pesos en la arista {ej_origen} - {ej_destino}:")
+    print(f"  {G.edges[ej_origen, ej_destino]}")
+
+    # Este par es un buen ejemplo: la ruta con MENOS estaciones y la ruta
+    # con MENOS tiempo tienen el mismo número de tramos, pero van por
+    # líneas distintas y el tiempo estimado es distinto.
+    origen, destino = "Pantitlán", "Buenavista"
+
+    camino_corto = ruta_mas_corta(G, origen, destino)
+    tiempo_camino_corto = tiempo_de_viaje(G, camino_corto)
+    print(f"  Tiempo estimado de esta ruta (con transbordos): {tiempo_camino_corto} min")
+
+    camino_rapido, _ = ruta_mas_rapida(G, origen, destino, peso="tiempo_min")
+    tiempo_camino_rapido = tiempo_de_viaje(G, camino_rapido)
+    print(f"  Tiempo estimado de esta ruta (con transbordos): {tiempo_camino_rapido} min")
+
+    # --- Dijkstra implementado a mano (sin usar nx.dijkstra_path) ---
+    print("\n" + "=" * 60)
+    print("DIJKSTRA IMPLEMENTADO DESDE CERO (heapq, sin funciones de ruteo de NetworkX)")
+    print("=" * 60)
+
+    distancias, predecesores = dijkstra_manual(G, origen, peso="tiempo_min")
+    camino_manual = reconstruir_camino(predecesores, origen, destino)
+
+    print(f"\nDijkstra manual: '{origen}' -> '{destino}'")
+    print(f"  Tiempo mínimo encontrado: {distancias[destino]:.2f} min (sin transbordos)")
+    _imprimir_ruta(G, camino_manual)
+    tiempo_manual_total = tiempo_de_viaje(G, camino_manual)
+    print(f"  Tiempo estimado de esta ruta (con transbordos): {tiempo_manual_total} min")
+
+    # Validación: el resultado manual debe coincidir con el de NetworkX
+    tiempo_nx = nx.dijkstra_path_length(G, origen, destino, weight="tiempo_min")
+    assert abs(distancias[destino] - tiempo_nx) < 1e-6, "¡Los resultados no coinciden!"
+    print(f"\n[OK] El resultado del Dijkstra manual coincide con nx.dijkstra_path_length "
+          f"({distancias[destino]:.2f} min == {tiempo_nx:.2f} min)")
+
+    dibujar_grafo(G)
