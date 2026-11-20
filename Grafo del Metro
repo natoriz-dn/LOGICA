@@ -6,6 +6,8 @@ Modelo de la red del Metro de la Ciudad de México (STC Metro) como grafo, usand
 - Cada arista tiene dos pesos:
     1- 'distancia_km': distancia PROMEDIO entre estaciones de esa línea.
     2- 'tiempo_min': tiempo estimado en minutos, resultado de dividir
+
+Nayib Alexis Toriz Alva
 """
 from __future__ import annotations
 
